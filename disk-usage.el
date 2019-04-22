@@ -5,7 +5,7 @@
 ;; Author: Pierre Neidhardt <mail@ambrevar.xyz>
 ;; Maintainer: Pierre Neidhardt <mail@ambrevar.xyz>
 ;; URL: https://gitlab.com/Ambrevar/emacs-disk-usage
-;; Version: 1.3.1
+;; Version: 1.3.3
 ;; Package-Requires: ((emacs "26.1"))
 ;; Keywords: files, convenience, tools
 
@@ -632,8 +632,13 @@ non-nil or with prefix argument."
                                                     "Delete" "Trash")))
     (cl-loop for entry in tabulated-list-entries
              if (disk-usage--file-info-marked (car entry))
-             do (let ((delete-by-moving-to-trash (not permanently)))
-                  (delete-file (disk-usage--file-info-name (car entry)))))
+             do (let ((delete-by-moving-to-trash (not permanently))
+                      (file (disk-usage--file-info-name (car entry))))
+                  (if (file-directory-p file)
+                      (delete-directory file
+                                        'recursive
+                                        delete-by-moving-to-trash)
+                    (delete-file file delete-by-moving-to-trash))))
     (tabulated-list-revert)))
 
 (defun disk-usage-find-file-at-point ()
