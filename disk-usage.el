@@ -86,7 +86,7 @@
   :type 'string)
 
 (defvaralias 'disk-usage--du-args 'disk-usage-du-args)
-(defcustom disk-usage-du-args "-sb"
+(defcustom disk-usage-du-args "-s -b"
   "Non-GNU users need GNU's `du' for the `-b' flag.  See `disk-usage-du-command'."
   :type 'string)
 
@@ -156,6 +156,8 @@
                (:constructor disk-usage--file-info-make))
   size
   name
+  (device 0)                            ; Used to identify hard links.
+  (inode 0)                             ; Used to identify hard links.
   (children 0)
   (marked nil))
 
@@ -273,6 +275,8 @@ See `disk-usage-add-filters' and `disk-usage-remove-filters'.")
                  if (null (file-attribute-type attributes))
                  collect (disk-usage--file-info-make
                           :name path
+                          :inode (file-attribute-inode-number attributes)
+                          :device (file-attribute-device-number attributes)
                           :size (file-attribute-size attributes))
                  ;; Symlinks
                  else if (stringp (file-attribute-type attributes))
@@ -313,12 +317,15 @@ $ find . -type f -exec du -sb {} +"
                                                                          'nosort)
                              for name = (car file)
                              for attributes = (cdr file)
+                             do (message "FILE %s" file)
                              when (and attributes
-                                       (not (file-attribute-type attributes))
+                                       (not (file-attribute-type attributes)) ; We discard non-files.
                                        (cl-loop for filter in disk-usage-filters
                                                 always (funcall filter name attributes)))
                              collect (disk-usage--file-info-make
                                       :name name
+                                      :inode (file-attribute-inode-number attributes)
+                                      :device (file-attribute-device-number attributes)
                                       :size (file-attribute-size attributes))))))
 
 (defcustom disk-usage-list-function #'disk-usage--list
@@ -338,8 +345,18 @@ It takes the directory to scan as argument."
   (tabulated-list-revert))
 
 (defun disk-usage--total (listing)
-  (cl-loop for file in listing
-           sum (disk-usage--file-info-size file)))
+  "Return the total size of all files in LISTING.
+Hard-links are taken into account."
+  (let ((map (make-hash-table :test #'equal)))
+    (cl-loop with map = (make-hash-table :test #'equal)
+             for file in listing
+             for index = (and (/= 0 (disk-usage--file-info-inode file))
+                              (list (disk-usage--file-info-inode file)
+                                    (disk-usage--file-info-device file)))
+             unless (gethash index map)
+             sum (disk-usage--file-info-size file)
+             when index
+             do (puthash index t map))))
 
 (defun disk-usage--directory-size (path)
   (let ((size (unless current-prefix-arg
@@ -354,8 +371,12 @@ It takes the directory to scan as argument."
 
 (defun disk-usage-directory-size-with-emacs (path)
   "Return the total disk usage of directory PATH as a number.
-This is slow but does not require any external process."
-  (disk-usage--total (disk-usage--list path)))
+This is slow but does not require any external process.
+Hard-links are taken into account."
+  ;; `disk-usage--list' won't do since we need to detect hard-links across
+  ;; subdirectories.  This is unfortunately slower, but since we have the fast
+  ;; `disk-usage-directory-size-with-du' it's not worth optimizing.
+  (disk-usage--total (disk-usage--list-recursively path)))
 (defalias 'disk-usage--directory-size-with-emacs 'disk-usage-directory-size-with-emacs)
 
 (defun disk-usage-directory-size-with-du (path)
@@ -365,9 +386,10 @@ This is slow but does not require any external process."
                        (split-string
                         (with-temp-buffer
                           (with-output-to-string
-                            (process-file disk-usage-du-command
-                                          nil '(t nil) nil
-                                          disk-usage-du-args (file-local-name path)))
+                            (message "%S" (append (split-string disk-usage-du-args) (list (file-local-name path))))
+                            (apply #'process-file disk-usage-du-command
+                                   nil '(t nil) nil
+                                   (append (split-string disk-usage-du-args) (list (file-local-name path)))))
                           (buffer-string))))))
       0))
 (defalias 'disk-usage--directory-size-with-du 'disk-usage-directory-size-with-du)
@@ -407,7 +429,7 @@ Takes a number and returns a string."
 (defun disk-usage--refresh (&optional directory)
   (setq directory (or directory default-directory))
   (let* ((listing (funcall disk-usage-list-function directory))
-         (total-size (disk-usage--total listing)))
+         (total-size (disk-usage--directory-size directory)))
     (disk-usage--set-tabulated-list-format total-size)
     (tabulated-list-init-header)
     (setq tabulated-list-entries
@@ -528,6 +550,7 @@ With a prefix argument, cache is updated when reverting the buffer.
 
 Also see `disk-usage-by-types-mode'."
   ;; TODO: Option to display extra attributes and default column to sort.
+  (hl-line-mode)
   (setq tabulated-list-padding 2)
   (setq tabulated-list-sort-key (cons "Size" 'flip))
   (setq tabulated-list-printer #'disk-usage--print-entry)
@@ -763,6 +786,7 @@ TYPE is the file extension (lower case)."
 (define-derived-mode disk-usage-by-types-mode tabulated-list-mode "Disk Usage By Types"
   "Mode to display disk usage by file types.
 Also see `disk-usage-mode'."
+  (hl-line-mode)
   (setq tabulated-list-sort-key (cons "Total size" 'flip))
   (add-hook 'tabulated-list-revert-hook 'disk-usage-by-types--refresh nil t))
 
