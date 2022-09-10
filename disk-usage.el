@@ -347,16 +347,15 @@ It takes the directory to scan as argument."
 (defun disk-usage--total (listing)
   "Return the total size of all files in LISTING.
 Hard-links are taken into account."
-  (let ((map (make-hash-table :test #'equal)))
-    (cl-loop with map = (make-hash-table :test #'equal)
-             for file in listing
-             for index = (and (/= 0 (disk-usage--file-info-inode file))
-                              (list (disk-usage--file-info-inode file)
-                                    (disk-usage--file-info-device file)))
-             unless (gethash index map)
-             sum (disk-usage--file-info-size file)
-             when index
-             do (puthash index t map))))
+  (cl-loop with map = (make-hash-table :test #'equal)
+           for file in listing
+           for index = (and (/= 0 (disk-usage--file-info-inode file))
+                            (list (disk-usage--file-info-inode file)
+                                  (disk-usage--file-info-device file)))
+           unless (gethash index map)
+           sum (disk-usage--file-info-size file)
+           when index
+           do (puthash index t map)))
 
 (defun disk-usage--directory-size (path)
   (let ((size (unless current-prefix-arg
