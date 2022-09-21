@@ -517,7 +517,7 @@ FILE-ENTRY may be a string or a button."
     (defvar tabulated-list--near-rows)
     (let ((tabulated-list--near-rows    ; Bind it if not bound yet (Bug#25506).
            (or (bound-and-true-p tabulated-list--near-rows)
-               (list (or (tabulated-list-get-entry (point-at-bol 0))
+               (list (or (tabulated-list-get-entry (line-beginning-position 0))
                          cols)
                      cols))))
       (setq x (tabulated-list-print-col 0
