@@ -226,11 +226,11 @@ A file must pass all the filters to be included.
 See `disk-usage-add-filters' and `disk-usage-remove-filters'.
 
 You can add custom filters to this list."
-  :type '(repeat 'symbol))
+  :type '(repeat symbol))
 
 (defcustom disk-usage-default-filters '()
   "Filters to enable in new `disk-usage' buffers."
-  :type '(repeat 'symbol))
+  :type '(repeat symbol))
 
 (defvar-local disk-usage-filters nil
   "List of `disk-usage' filters in current buffer.
